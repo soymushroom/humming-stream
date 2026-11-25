@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Score Player</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Segoe UI", "Yu Gothic UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --page: #101311;
+      --panel: #181d19;
+      --panel-raised: #202721;
+      --border: #303a32;
+      --text: #edf2e8;
+      --muted: #9da99c;
+      --accent: #c4f06a;
+      --accent-ink: #1b2412;
+      --line: #566451;
+      --note: #c4f06a;
+      --note-ink: #17200f;
+      --measure-width: 220px;
+      --measure-height: 205px;
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      height: 100vh;
+      height: 100dvh;
+      margin: 0;
+      overflow: hidden;
+      background: var(--page);
+      color: var(--text);
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+
+    .app {
+      --page: #101311;
+      --panel: #181d19;
+      --panel-raised: #202721;
+      --border: #303a32;
+      --text: #edf2e8;
+      --muted: #9da99c;
+      --accent: #c4f06a;
+      --accent-ink: #1b2412;
+      --line: #566451;
+      --note: #c4f06a;
+      --note-ink: #17200f;
+      --measure-width: 220px;
+      --measure-height: 205px;
+      --radius: 12px;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 100vh;
+      background: var(--page);
+      color: var(--text);
+      transition: background-color 180ms ease, color 180ms ease;
+    }
+
+    .transport-row, .skip-group, .zoom-group {
+      display: flex;
+      align-items: center;
+    }
+    .score-panel {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+    .icon-button, .small-button, .skip-button, .apply-button {
+      display: inline-flex;
+      min-height: 36px;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--panel-raised);
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+    .icon-button:hover, .small-button:hover, .skip-button:hover { border-color: var(--accent); }
+    button:active { transform: translateY(1px); }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .icon-button { width: 40px; font-size: 14px; }
+    .icon-button.primary { width: 47px; height: 43px; border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-size: 16px; }
+    .skip-button { min-width: 0; padding: 0 5px; font-size: 11px; }
+    .bpm-unit { color: var(--muted); font-size: 11px; }
+    .apply-button { padding: 0 10px; color: var(--accent); font-size: 11px; }
+    .zoom-group { gap: 7px; }
+    .small-button { width: 35px; font-size: 15px; }
+    .zoom-readout { min-width: 42px; color: var(--muted); font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+    .score-panel { overflow: hidden; }
+    .score-canvas { position: relative; height: min(58vh, 570px); min-height: 360px; overflow: auto; scrollbar-color: var(--border) transparent; }
+    .score-rows { position: relative; min-height: 100%; padding: 13px 0 25px; }
+    .score-row { position: relative; margin-bottom: 13px; }
+    .row-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+    .row-scroll::-webkit-scrollbar { display: none; }
+    .row-track { display: flex; width: max-content; min-height: var(--measure-height); align-items: stretch; }
+    .score-spacer { flex: 0 0 auto; }
+    .measure {
+      position: relative;
+      flex: 0 0 var(--measure-width);
+      width: var(--measure-width);
+      height: var(--measure-height);
+      border-right: 1px solid var(--line);
+    }
+    .measure:first-of-type { border-left: 1px solid var(--line); }
+    .measure-head {
+      display: flex;
+      height: 25px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 9px;
+      color: var(--muted);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+    .measure-head strong { color: var(--text); font-weight: 600; }
+    .measure-body {
+      position: relative;
+      height: calc(var(--measure-height) - 25px);
+      overflow: visible;
+      background-image: linear-gradient(to bottom, transparent 23%, var(--line) 23.4%, transparent 24%,
+        transparent 33%, var(--line) 33.4%, transparent 34%,
+        transparent 43%, var(--line) 43.4%, transparent 44%,
+        transparent 53%, var(--line) 53.4%, transparent 54%,
+        transparent 63%, var(--line) 63.4%, transparent 64%);
+    }
+    .beat-grid { position: absolute; inset: 9px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); pointer-events: none; }
+    .beat-grid span { border-left: 1px dashed color-mix(in srgb, var(--line), transparent 52%); }
+    .beat-grid span:first-child { border-left: 0; }
+    .note {
+      position: absolute;
+      z-index: 1;
+      display: flex;
+      min-width: 20px;
+      height: 22px;
+      align-items: center;
+      gap: 4px;
+      overflow: visible;
+      padding: 0 6px;
+      border-radius: 5px;
+      background: var(--note);
+      color: var(--note-ink);
+      font-size: 10px;
+      font-weight: 650;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px #0002;
+    }
+    .note.chord { top: 76px; }
+    .note.single {
+      height: 19px;
+      border: 1px solid #79baff;
+      background: color-mix(in srgb, #79baff, transparent 80%);
+      color: var(--text);
+      font-size: 9px;
+    }
+    .note .glyph { font-size: 12px; }
+    .measure[data-current="true"] .measure-head strong { color: var(--accent); }
+    .measure[data-current="true"] { background: color-mix(in srgb, var(--accent), transparent 96%); }
+    .playhead {
+      position: absolute;
+      z-index: 4;
+      top: 0;
+      bottom: 0;
+      left: 22%;
+      width: 1px;
+      background: var(--accent);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent), transparent 75%);
+      pointer-events: none;
+    }
+    .playhead::before {
+      position: absolute;
+      top: 4px;
+      left: -4px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--accent);
+      content: "";
+    }
+    .waiting-note {
+      position: sticky;
+      z-index: 3;
+      right: 12px;
+      bottom: 10px;
+      width: max-content;
+      margin: 0 12px 0 auto;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 7px 9px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 10px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #0c1012;
+      --panel: #151a1d;
+      --panel-raised: #20272a;
+      --border: #2b3539;
+      --text: #edf2ee;
+      --muted: #8d999c;
+      --accent: #c2ef6b;
+      --accent-ink: #18210e;
+      --line: #566165;
+      --note: #c2ef6b;
+      --note-ink: #18210e;
+      --measure-width: 228px;
+      --measure-height: 218px;
+      --radius: 16px;
+      font-family: Inter, "Segoe UI", "Yu Gothic UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+
+    body { background: var(--page); color: var(--text); }
+    .app {
+      --page: #0c1012;
+      --panel: #151a1d;
+      --panel-raised: #20272a;
+      --border: #2b3539;
+      --text: #edf2ee;
+      --muted: #8d999c;
+      --accent: #c2ef6b;
+      --accent-ink: #18210e;
+      --line: #566165;
+      --note: #c2ef6b;
+      --note-ink: #18210e;
+      --measure-width: 228px;
+      --measure-height: 218px;
+      --radius: 16px;
+      min-height: 100vh;
+      background: var(--page);
+      color: var(--text);
+    }
+    .shell {
+      position: relative;
+      display: flex;
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 0;
+      flex-direction: column;
+      gap: 0;
+      padding: 0;
+    }
+    main { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+    .player-main {
+      position: relative;
+      display: flex;
+      min-height: 0;
+      flex: 1;
+    }
+    .score-panel {
+      position: absolute;
+      inset: 0;
+      min-width: 0;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      background: radial-gradient(ellipse at 50% 42%, #182023 0, #111719 75%);
+    }
+    .score-canvas {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      flex: 1;
+      scrollbar-color: var(--border) transparent;
+      scrollbar-gutter: stable;
+    }
+    .score-rows {
+      display: flex;
+      flex: 0 0 auto;
+      flex-direction: column;
+      justify-content: center;
+      gap: 20px;
+      margin-block: auto;
+      padding: 24px 0 36px;
+    }
+    .score-row { flex: 0 0 auto; margin-bottom: 0; }
+    .row-track { min-height: var(--measure-height); }
+    .measure { border-color: #667276; }
+    .measure-head { height: 29px; padding: 0 11px; color: #9da9aa; font-size: 10px; }
+    .measure-head strong { color: #e3e9e4; font-size: 11px; }
+    .measure-body { height: calc(var(--measure-height) - 29px); }
+    .measure[data-current="true"] { background: #c2ef6b08; }
+    .measure[data-current="true"] .measure-head strong { color: var(--accent); }
+    .note {
+      height: 23px;
+      border: 1px solid #d6ff8880;
+      border-radius: 6px;
+      background: linear-gradient(180deg, #d7ff8b, #b8e65e);
+      box-shadow: 0 3px 8px #0005;
+      font-size: 10px;
+    }
+    .note.chord {
+      display: flex;
+      width: max-content;
+      height: auto;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      overflow: visible;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    .note.chord .chord-label {
+      border: 1px solid #d6ff8880;
+      border-radius: 5px;
+      padding: 2px 5px;
+      background: #c2ef6b;
+      color: #18210e;
+      font-size: 10px;
+      line-height: 1.2;
+    }
+    .note.chord .glyph { color: var(--accent); line-height: 1; }
+    .note.single {
+      height: 20px;
+      border-color: #80bfffbb;
+      border-radius: 5px;
+      background: #3d82b64d;
+      color: #e2efff;
+      box-shadow: 0 2px 6px #0004;
+      font-size: 9px;
+    }
+    .playhead { background: #d7ff81; box-shadow: 0 0 12px #c2ef6b7a; }
+    .playhead::before { background: #d7ff81; box-shadow: 0 0 12px #c2ef6b; }
+    .waiting-note {
+      position: fixed;
+      border-color: #46513e;
+      background: #1b211a;
+      color: #c2d49e;
+      font-size: 11px;
+      right: 22px;
+      bottom: 114px;
+      margin: 0;
+      z-index: 12;
+    }
+    .player-dock {
+      position: fixed;
+      z-index: 20;
+      bottom: 22px;
+      left: 50%;
+      display: flex;
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      align-items: center;
+      justify-content: center;
+      transform: translateX(-50%);
+      gap: 18px;
+      padding: 15px 19px;
+      border: 1px solid #303a3e;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #1d2427, #171d20);
+      box-shadow: 0 12px 30px #0004, inset 0 1px #ffffff0a;
+    }
+    .transport-cluster { display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .skip-group { gap: 4px; margin: 0; }
+    .skip-button {
+      width: 39px;
+      min-height: 34px;
+      flex: 0 0 auto;
+      border-color: transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: #a7b1b2;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    .skip-button:hover { border-color: #3b474a; background: #293235; color: var(--text); }
+    .transport-row { gap: 7px; margin: 0; }
+    .icon-button {
+      width: 38px;
+      min-height: 38px;
+      border-color: transparent;
+      border-radius: 50%;
+      background: transparent;
+      color: #b8c2c1;
+      font-size: 13px;
+    }
+    .icon-button:hover { border-color: #3b474a; background: #293235; }
+    .icon-button.primary {
+      width: 48px;
+      height: 48px;
+      border: 1px solid #d3ff8b;
+      background: linear-gradient(180deg, #d8ff8d, #b7e65b);
+      color: #17200e;
+      font-size: 16px;
+      box-shadow: 0 3px 16px #b8e65e30;
+    }
+    .player-utilities { display: flex; align-items: center; justify-content: flex-end; gap: 15px; }
+    .tempo-control {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 6px 5px 10px;
+      border: 1px solid #344044;
+      border-radius: 11px;
+      background: #111719;
+    }
+    .tempo-control label { color: var(--muted); font-size: 9px; letter-spacing: .08em; }
+    .tempo-control input {
+      width: 48px;
+      height: 28px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 650;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .bpm-unit { color: #9da8a8; font-size: 9px; }
+    .apply-button {
+      width: 27px;
+      min-height: 27px;
+      padding: 0;
+      border-color: transparent;
+      border-radius: 7px;
+      background: #293432;
+      color: var(--accent);
+      font-size: 11px;
+    }
+    .apply-button:hover { border-color: var(--accent); }
+    .tempo-error { position: absolute; margin-top: 42px; white-space: nowrap; }
+    .tempo-control input[aria-invalid="true"] { color: #ff9284; }
+    .zoom-group { gap: 3px; }
+    .small-button {
+      width: 32px;
+      min-height: 32px;
+      border-color: transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: #aeb8b7;
+    }
+    .small-button:hover { border-color: #3b474a; background: #293235; }
+    .zoom-readout { min-width: 39px; color: #aeb8b7; font-size: 10px; }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+    @media (max-width: 800px) {
+      .player-dock {
+        bottom: 10px;
+        width: calc(100vw - 20px);
+        max-width: none;
+        flex-direction: column;
+        gap: 8px;
+        padding: 9px 10px;
+      }
+      .transport-cluster { width: 100%; justify-content: space-between; gap: 2px; }
+      .waiting-note { right: 16px; bottom: 132px; }
+      .score-rows { padding-top: 17px; }
+      .skip-group { gap: 0; }
+      .skip-button { width: 32px; min-height: 32px; font-size: 10px; }
+      .transport-row { gap: 2px; }
+      .icon-button { width: 33px; min-height: 35px; }
+      .icon-button.primary { width: 43px; height: 43px; }
+      .player-utilities { width: 100%; justify-content: center; gap: 12px; }
+      .tempo-control { gap: 4px; padding-left: 7px; }
+      .tempo-control label { font-size: 8px; }
+      .tempo-control input { width: 43px; }
+      .small-button { width: 29px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="shell">
+      <main>
+        <div class="player-main">
+          <section class="score-panel" aria-label="スコア">
+            <div class="score-canvas" id="score-canvas" aria-label="楽譜ビジュアライザ">
+              <div class="score-rows" id="score-rows"></div>
+              <div class="playhead" aria-hidden="true"></div>
+              <div class="waiting-note" id="waiting-note" hidden>末尾 · データ待機中</div>
+            </div>
+          </section>
+
+          <section class="player-dock" aria-label="再生操作">
+            <div class="transport-cluster" aria-label="再生と小節スキップ">
+              <div class="skip-group" role="group" aria-label="前の小節へ">
+                <button class="skip-button" data-direction="backward" data-count="8" type="button" aria-label="8小節戻る">−8</button>
+                <button class="skip-button" data-direction="backward" data-count="4" type="button" aria-label="4小節戻る">−4</button>
+                <button class="skip-button" data-direction="backward" data-count="1" type="button" aria-label="1小節戻る">−1</button>
+              </div>
+              <div class="transport-row" role="group" aria-label="再生操作">
+                <button class="icon-button primary" id="play-button" type="button" aria-label="再生" title="再生 (Space)">▶</button>
+                <button class="icon-button" id="pause-button" type="button" aria-label="一時停止" title="一時停止">Ⅱ</button>
+              </div>
+              <div class="skip-group" role="group" aria-label="次の小節へ">
+                <button class="skip-button" data-direction="forward" data-count="1" type="button" aria-label="1小節進む">+1</button>
+                <button class="skip-button" data-direction="forward" data-count="4" type="button" aria-label="4小節進む">+4</button>
+                <button class="skip-button" data-direction="forward" data-count="8" type="button" aria-label="8小節進む">+8</button>
+              </div>
+            </div>
+            <div class="player-utilities">
+              <div class="tempo-control">
+                <label for="bpm-input">TEMPO</label>
+                <input id="bpm-input" type="number" min="1" max="300" step="0.1" value="92" inputmode="decimal" aria-label="テンポ BPM">
+                <span class="bpm-unit">BPM</span>
+                <button class="apply-button" id="apply-tempo" type="button" aria-label="テンポを適用">✓</button>
+                <span class="tempo-error" id="tempo-error" role="alert" hidden>1〜300 BPM</span>
+              </div>
+              <div class="zoom-group" role="group" aria-label="譜面の拡大縮小">
+                <button class="small-button" id="zoom-out" type="button" aria-label="譜面を縮小" title="縮小 (−)">−</button>
+                <span class="zoom-readout" id="zoom-readout">100%</span>
+                <button class="small-button" id="zoom-in" type="button" aria-label="譜面を拡大" title="拡大 (+)">+</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const measurePattern = [
+      { id: "m-001", orderKey: "a0", timeSignature: "4/4", notes: [
+        { beatOffset: "0/1", duration: "1/8", kind: "chord", notation: "C", articulation: "strumDown" },
+        { beatOffset: "1/2", duration: "1/2", kind: "singleNote", notation: "E4", articulation: "normal" },
+        { beatOffset: "1/1", duration: "1/8", kind: "chord", notation: "C", articulation: "strumUp" },
+        { beatOffset: "3/2", duration: "1/2", kind: "singleNote", notation: "G4", articulation: "normal" },
+        { beatOffset: "2/1", duration: "1/8", kind: "chord", notation: "C", articulation: "strumDown" },
+        { beatOffset: "5/2", duration: "1/2", kind: "singleNote", notation: "A4", articulation: "normal" },
+        { beatOffset: "11/4", duration: "1/8", kind: "chord", notation: "C", articulation: "mutedStrumDown" },
+        { beatOffset: "3/1", duration: "1/8", kind: "chord", notation: "C", articulation: "strumUp" }
+      ]},
+      { id: "m-002", orderKey: "a1", timeSignature: "4/4", notes: [
+        { beatOffset: "0/1", duration: "1/8", kind: "chord", notation: "Am", articulation: "strumDown" },
+        { beatOffset: "1/2", duration: "1/2", kind: "singleNote", notation: "C5", articulation: "normal" },
+        { beatOffset: "5/4", duration: "1/8", kind: "chord", notation: "Am", articulation: "strumUp" },
+        { beatOffset: "7/4", duration: "1/4", kind: "singleNote", notation: "B4", articulation: "normal" },
+        { beatOffset: "9/4", duration: "1/8", kind: "chord", notation: "Am", articulation: "mutedStrumDown" },
+        { beatOffset: "5/2", duration: "1/8", kind: "chord", notation: "Am", articulation: "strumDown" },
+        { beatOffset: "3/1", duration: "1/2", kind: "singleNote", notation: "A4", articulation: "normal" },
+        { beatOffset: "7/2", duration: "1/8", kind: "chord", notation: "Am", articulation: "strumUp" }
+      ]},
+      { id: "m-003", orderKey: "a2", timeSignature: "4/4", notes: [
+        { beatOffset: "0/1", duration: "1/2", kind: "singleNote", notation: "A4", articulation: "normal" },
+        { beatOffset: "3/4", duration: "1/8", kind: "chord", notation: "F", articulation: "strumDown" },
+        { beatOffset: "3/2", duration: "1/2", kind: "singleNote", notation: "C5", articulation: "normal" },
+        { beatOffset: "2/1", duration: "1/8", kind: "chord", notation: "F", articulation: "strumUp" },
+        { beatOffset: "5/2", duration: "1/2", kind: "singleNote", notation: "A4", articulation: "normal" },
+        { beatOffset: "13/4", duration: "1/8", kind: "chord", notation: "F", articulation: "mutedStrumDown" },
+        { beatOffset: "7/2", duration: "1/8", kind: "chord", notation: "F", articulation: "strumDown" },
+        { beatOffset: "15/4", duration: "1/2", kind: "singleNote", notation: "G4", articulation: "normal" }
+      ]},
+      { id: "m-004", orderKey: "a3", timeSignature: "4/4", notes: [
+        { beatOffset: "0/1", duration: "1/8", kind: "chord", notation: "G", articulation: "strumDown" },
+        { beatOffset: "1/2", duration: "1/2", kind: "singleNote", notation: "B4", articulation: "normal" },
+        { beatOffset: "3/2", duration: "1/8", kind: "chord", notation: "G", articulation: "strumUp" },
+        { beatOffset: "2/1", duration: "1/2", kind: "singleNote", notation: "D5", articulation: "normal" },
+        { beatOffset: "11/4", duration: "1/8", kind: "chord", notation: "G", articulation: "mutedStrumDown" },
+        { beatOffset: "3/1", duration: "1/8", kind: "chord", notation: "G", articulation: "strumDown" },
+        { beatOffset: "13/4", duration: "1/4", kind: "singleNote", notation: "B4", articulation: "normal" },
+        { beatOffset: "15/4", duration: "1/8", kind: "singleNote", notation: "C5", articulation: "normal" }
+      ]},
+      { id: "m-005", orderKey: "a4", timeSignature: "4/4", notes: [
+        { beatOffset: "0/1", duration: "1/8", kind: "chord", notation: "C", articulation: "strumDown" },
+        { beatOffset: "1/2", duration: "1/2", kind: "singleNote", notation: "E4", articulation: "normal" },
+        { beatOffset: "1/1", duration: "1/8", kind: "chord", notation: "C", articulation: "strumUp" },
+        { beatOffset: "3/2", duration: "1/2", kind: "singleNote", notation: "G4", articulation: "normal" },
+        { beatOffset: "2/1", duration: "1/8", kind: "chord", notation: "C", articulation: "strumDown" },
+        { beatOffset: "5/2", duration: "1/2", kind: "singleNote", notation: "A4", articulation: "normal" },
+        { beatOffset: "11/4", duration: "1/8", kind: "chord", notation: "C", articulation: "mutedStrumDown" },
+        { beatOffset: "3/1", duration: "1/8", kind: "chord", notation: "C", articulation: "strumUp" }
+      ]},
+      { id: "m-006", orderKey: "a5", timeSignature: "4/4", notes: [
+        { beatOffset: "0/1", duration: "1/8", kind: "chord", notation: "Am", articulation: "strumDown" },
+        { beatOffset: "1/2", duration: "1/2", kind: "singleNote", notation: "C5", articulation: "normal" },
+        { beatOffset: "5/4", duration: "1/8", kind: "chord", notation: "Am", articulation: "strumUp" },
+        { beatOffset: "7/4", duration: "1/4", kind: "singleNote", notation: "B4", articulation: "normal" },
+        { beatOffset: "9/4", duration: "1/8", kind: "chord", notation: "Am", articulation: "mutedStrumDown" },
+        { beatOffset: "5/2", duration: "1/8", kind: "chord", notation: "Am", articulation: "strumDown" },
+        { beatOffset: "3/1", duration: "1/2", kind: "singleNote", notation: "A4", articulation: "normal" },
+        { beatOffset: "7/2", duration: "1/8", kind: "chord", notation: "Am", articulation: "strumUp" }
+      ]},
+      { id: "m-007", orderKey: "a6", timeSignature: "4/4", notes: [
+        { beatOffset: "0/1", duration: "1/2", kind: "singleNote", notation: "A4", articulation: "normal" },
+        { beatOffset: "3/4", duration: "1/8", kind: "chord", notation: "F", articulation: "strumDown" },
+        { beatOffset: "3/2", duration: "1/2", kind: "singleNote", notation: "C5", articulation: "normal" },
+        { beatOffset: "2/1", duration: "1/8", kind: "chord", notation: "F", articulation: "strumUp" },
+        { beatOffset: "5/2", duration: "1/2", kind: "singleNote", notation: "A4", articulation: "normal" },
+        { beatOffset: "13/4", duration: "1/8", kind: "chord", notation: "F", articulation: "mutedStrumDown" },
+        { beatOffset: "7/2", duration: "1/8", kind: "chord", notation: "F", articulation: "strumDown" },
+        { beatOffset: "15/4", duration: "1/4", kind: "singleNote", notation: "G4", articulation: "normal" }
+      ]},
+      { id: "m-008", orderKey: "a7", timeSignature: "4/4", notes: [
+        { beatOffset: "0/1", duration: "1/8", kind: "chord", notation: "G", articulation: "strumDown" },
+        { beatOffset: "1/2", duration: "1/2", kind: "singleNote", notation: "B4", articulation: "normal" },
+        { beatOffset: "3/2", duration: "1/8", kind: "chord", notation: "G", articulation: "strumUp" },
+        { beatOffset: "2/1", duration: "1/2", kind: "singleNote", notation: "D5", articulation: "normal" },
+        { beatOffset: "11/4", duration: "1/8", kind: "chord", notation: "G", articulation: "mutedStrumDown" },
+        { beatOffset: "3/1", duration: "1/8", kind: "chord", notation: "G", articulation: "strumDown" },
+        { beatOffset: "13/4", duration: "1/4", kind: "singleNote", notation: "B4", articulation: "normal" },
+        { beatOffset: "15/4", duration: "1/8", kind: "singleNote", notation: "C5", articulation: "normal" }
+      ]}
+    ];
+
+    const measures = Array.from({ length: 64 }, (_, index) => ({
+      ...measurePattern[index % measurePattern.length],
+      id: `m-${String(index + 1).padStart(3, "0")}`,
+      orderKey: `a${String(index).padStart(2, "0")}`
+    }));
+
+    const app = document.querySelector("#app");
+    const scoreCanvas = document.querySelector("#score-canvas");
+    const scoreRows = document.querySelector("#score-rows");
+    const bpmInput = document.querySelector("#bpm-input");
+    const waitingNote = document.querySelector("#waiting-note");
+    const state = {
+      playback: "Stopped",
+      measureIndex: 0,
+      beat: 0,
+      bpm: 92,
+      zoom: 1,
+      measuresPerRow: measures.length,
+      firstMeasure: 0,
+      previousRow: -1,
+      lastFrame: 0
+    };
+
+    function fraction(value) {
+      const [numerator, denominator] = value.split("/").map(Number);
+      return numerator / denominator;
+    }
+
+    function measureBeats(measure) {
+      const [numerator, denominator] = measure.timeSignature.split("/").map(Number);
+      return numerator * 4 / denominator;
+    }
+
+    function notePitch(notation) {
+      const match = /^([A-G])(#?)([0-8])$/.exec(notation);
+      if (!match) return 50;
+      const semitones = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+      return (Number(match[3]) * 12 + semitones[match[1]] + (match[2] ? 1 : 0) - 40) * 3;
+    }
+
+    function articulationGlyph(articulation) {
+      if (articulation.includes("Up")) return "↑";
+      if (articulation.includes("Down")) return "↓";
+      return "·";
+    }
+
+    function renderMeasure(measure, index) {
+      const bar = document.createElement("article");
+      bar.className = "measure";
+      bar.dataset.measureIndex = String(index);
+      bar.innerHTML = `<div class="measure-head"><strong>${String(index + 1).padStart(2, "0")}</strong><span>${measure.timeSignature}</span></div><div class="measure-body"><div class="beat-grid"><span></span><span></span><span></span><span></span></div></div>`;
+      const body = bar.querySelector(".measure-body");
+      const totalBeats = measureBeats(measure);
+      let chordIndex = 0;
+      for (const note of measure.notes) {
+        const offset = fraction(note.beatOffset);
+        const duration = fraction(note.duration);
+        const element = document.createElement("div");
+        element.className = `note ${note.kind === "chord" ? "chord" : "single"}`;
+        element.style.left = `${offset / totalBeats * 100}%`;
+        if (note.kind === "singleNote") {
+          element.style.width = `${Math.max(5, duration / totalBeats * 100)}%`;
+          element.style.top = `${Math.max(20, Math.min(115, 96 - notePitch(note.notation)))}px`;
+          element.textContent = note.notation;
+        } else {
+          element.style.top = `${chordIndex++ % 2 === 0 ? 6 : 54}px`;
+          const glyph = document.createElement("span");
+          glyph.className = "glyph";
+          glyph.textContent = articulationGlyph(note.articulation);
+          const label = document.createElement("span");
+          label.className = "chord-label";
+          label.textContent = note.notation;
+          element.append(label, glyph);
+        }
+        element.title = `${note.kind === "chord" ? "コード" : "単音"} ${note.notation} · ${note.beatOffset} · ${note.duration}`;
+        body.append(element);
+      }
+      return bar;
+    }
+
+    function renderScore(forceFollow = true) {
+      const scrollTop = scoreCanvas.scrollTop;
+      const measureWidth = parseFloat(getComputedStyle(app).getPropertyValue("--measure-width"));
+      const perRow = state.measuresPerRow = state.zoom <= 0.75
+        ? Math.min(measures.length, Math.max(1, Math.floor(scoreCanvas.clientWidth * 0.78 / measureWidth)))
+        : measures.length;
+      state.firstMeasure = state.zoom <= 0.75 ? state.measureIndex : 0;
+      const rows = document.createDocumentFragment();
+      for (let start = state.firstMeasure; start < measures.length; start += perRow) {
+        const row = document.createElement("div");
+        row.className = "score-row";
+        row.dataset.rowIndex = String((start - state.firstMeasure) / perRow);
+        const scroll = document.createElement("div");
+        scroll.className = "row-scroll";
+        const track = document.createElement("div");
+        track.className = "row-track";
+        const leftPad = document.createElement("div");
+        leftPad.className = "score-spacer";
+        leftPad.style.width = `${Math.round(scoreCanvas.clientWidth * 0.22)}px`;
+        track.append(leftPad);
+        const firstRenderedMeasure = start === state.firstMeasure ? 0 : start;
+        for (let index = firstRenderedMeasure; index < Math.min(start + perRow, measures.length); index++) {
+          track.append(renderMeasure(measures[index], index));
+        }
+        const rightPad = document.createElement("div");
+        rightPad.className = "score-spacer";
+        rightPad.style.width = `${Math.round(scoreCanvas.clientWidth * 0.78)}px`;
+        track.append(rightPad);
+        scroll.append(track);
+        row.append(scroll);
+        rows.append(row);
+      }
+      scoreRows.replaceChildren(rows);
+      if (!forceFollow) scoreCanvas.scrollTop = scrollTop;
+      updateScorePosition(forceFollow);
+    }
+
+    function updateScoreDisplay() {
+      waitingNote.hidden = state.playback !== "WaitingForData";
+      for (const measureElement of scoreRows.querySelectorAll(".measure")) {
+        measureElement.dataset.current = String(Number(measureElement.dataset.measureIndex) === state.measureIndex);
+      }
+    }
+
+    function updateScorePosition(forceFollow = false) {
+      if (state.zoom <= 0.75 && state.firstMeasure !== state.measureIndex) {
+        renderScore(forceFollow);
+        return;
+      }
+      const rowSize = state.measuresPerRow;
+      const relativeMeasure = state.measureIndex - state.firstMeasure;
+      const rowIndex = Math.floor(relativeMeasure / rowSize);
+      const row = scoreRows.querySelector(`[data-row-index="${rowIndex}"]`);
+      if (row) {
+        const scroll = row.querySelector(".row-scroll");
+        scroll.tabIndex = 0;
+        scroll.setAttribute("aria-label", `譜面 ${rowIndex + 1}行目`);
+        const localMeasure = rowIndex === 0 ? state.measureIndex : relativeMeasure % rowSize;
+        const localX = localMeasure * parseFloat(getComputedStyle(app).getPropertyValue("--measure-width")) +
+          state.beat / measureBeats(measures[state.measureIndex]) *
+          parseFloat(getComputedStyle(app).getPropertyValue("--measure-width"));
+        if (forceFollow || state.playback === "Playing") {
+          scroll.scrollLeft = Math.max(0, localX);
+          if (forceFollow || rowIndex !== state.previousRow) {
+            const canvasRect = scoreCanvas.getBoundingClientRect();
+            const rowRect = row.getBoundingClientRect();
+            if (rowRect.top < canvasRect.top || rowRect.bottom > canvasRect.bottom) {
+              scoreCanvas.scrollTop += rowRect.top - canvasRect.top - 13;
+            }
+          }
+        }
+      }
+      state.previousRow = rowIndex;
+      updateScoreDisplay();
+    }
+
+    function setPlayback(next) {
+      state.playback = next;
+      updateScorePosition();
+    }
+
+    function togglePlayback() {
+      if (state.playback === "Playing") {
+        setPlayback("Paused");
+        return;
+      }
+      if (state.playback === "Paused") {
+        setPlayback("Playing");
+        state.lastFrame = performance.now();
+        return;
+      }
+      if (state.playback === "Stopped") {
+        state.measureIndex = 0;
+        state.beat = 0;
+      }
+      setPlayback("Playing");
+      state.lastFrame = performance.now();
+    }
+
+    function skipMeasures(direction, count) {
+      const delta = direction === "forward" ? count : -count;
+      const next = Math.max(0, Math.min(measures.length - 1, state.measureIndex + delta));
+      state.measureIndex = next;
+      state.beat = 0;
+      updateScorePosition(true);
+    }
+
+    function tick(now) {
+      if (state.playback === "Playing") {
+        const elapsed = Math.min(250, now - state.lastFrame) / 1000;
+        state.lastFrame = now;
+        state.beat += elapsed * state.bpm / 60;
+        while (state.beat >= measureBeats(measures[state.measureIndex])) {
+          state.beat -= measureBeats(measures[state.measureIndex]);
+          if (state.measureIndex === measures.length - 1) {
+            state.beat = measureBeats(measures[state.measureIndex]);
+            state.playback = "WaitingForData";
+            break;
+          }
+          state.measureIndex++;
+        }
+        updateScorePosition();
+      }
+      requestAnimationFrame(tick);
+    }
+
+    function setZoom(delta) {
+      state.zoom = Math.max(0.6, Math.min(1.4, Math.round((state.zoom + delta) * 100) / 100));
+      app.style.setProperty("--measure-width", `${Math.round(228 * state.zoom)}px`);
+      app.style.setProperty("--measure-height", `${Math.round(218 * state.zoom)}px`);
+      document.querySelector("#zoom-readout").textContent = `${Math.round(state.zoom * 100)}%`;
+      renderScore();
+    }
+
+    document.querySelector("#play-button").addEventListener("click", togglePlayback);
+    document.querySelector("#pause-button").addEventListener("click", () => {
+      if (state.playback === "Playing") setPlayback("Paused");
+    });
+    for (const button of document.querySelectorAll(".skip-button")) {
+      button.addEventListener("click", () => skipMeasures(button.dataset.direction, Number(button.dataset.count)));
+    }
+    document.querySelector("#apply-tempo").addEventListener("click", () => {
+      const value = Number(bpmInput.value);
+      if (!Number.isFinite(value) || value <= 0 || value > 300) {
+        bpmInput.setAttribute("aria-invalid", "true");
+        document.querySelector("#tempo-error").hidden = false;
+        bpmInput.focus();
+        return;
+      }
+      bpmInput.removeAttribute("aria-invalid");
+      document.querySelector("#tempo-error").hidden = true;
+      state.bpm = Math.round(value * 10) / 10;
+      updateScoreDisplay();
+    });
+    bpmInput.addEventListener("input", () => {
+      bpmInput.removeAttribute("aria-invalid");
+      document.querySelector("#tempo-error").hidden = true;
+    });
+    document.querySelector("#zoom-out").addEventListener("click", () => setZoom(-0.1));
+    document.querySelector("#zoom-in").addEventListener("click", () => setZoom(0.1));
+    window.addEventListener("resize", () => renderScore());
+    window.addEventListener("keydown", event => {
+      if (event.code === "Space" && !["INPUT", "BUTTON"].includes(document.activeElement.tagName)) {
+        event.preventDefault();
+        togglePlayback();
+      }
+      if (event.key === "+" && !["INPUT", "BUTTON"].includes(document.activeElement.tagName)) setZoom(0.1);
+      if (event.key === "-" && !["INPUT", "BUTTON"].includes(document.activeElement.tagName)) setZoom(-0.1);
+    });
+
+    renderScore();
+    updateScoreDisplay();
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
